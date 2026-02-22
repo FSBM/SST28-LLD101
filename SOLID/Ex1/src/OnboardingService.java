@@ -1,47 +1,35 @@
 import java.util.*;
 
 public class OnboardingService {
-    private final FakeDb db;
+    private final StudentInputParser parser;
+    private final StudentValidator validator;
+    private final StudentRepository repo;
+    private final OnboardingPrinter printer;
 
-    public OnboardingService(FakeDb db) { this.db = db; }
+    public OnboardingService(StudentInputParser parser, StudentValidator validator,
+            StudentRepository repo, OnboardingPrinter printer) {
+        this.parser = parser;
+        this.validator = validator;
+        this.repo = repo;
+        this.printer = printer;
+    }
 
-    // Intentionally violates SRP: parses + validates + creates ID + saves + prints.
+    // now this just orchastrates the flow
     public void registerFromRawInput(String raw) {
-        System.out.println("INPUT: " + raw);
+        printer.printInput(raw);
 
-        Map<String,String> kv = new LinkedHashMap<>();
-        String[] parts = raw.split(";");
-        for (String p : parts) {
-            String[] t = p.split("=", 2);
-            if (t.length == 2) kv.put(t[0].trim(), t[1].trim());
-        }
-
-        String name = kv.getOrDefault("name", "");
-        String email = kv.getOrDefault("email", "");
-        String phone = kv.getOrDefault("phone", "");
-        String program = kv.getOrDefault("program", "");
-
-        // validation inline, printing inline
-        List<String> errors = new ArrayList<>();
-        if (name.isBlank()) errors.add("name is required");
-        if (email.isBlank() || !email.contains("@")) errors.add("email is invalid");
-        if (phone.isBlank() || !phone.chars().allMatch(Character::isDigit)) errors.add("phone is invalid");
-        if (!(program.equals("CSE") || program.equals("AI") || program.equals("SWE"))) errors.add("program is invalid");
+        StudentRawData data = parser.parse(raw);
+        List<String> errors = validator.validate(data);
 
         if (!errors.isEmpty()) {
-            System.out.println("ERROR: cannot register");
-            for (String e : errors) System.out.println("- " + e);
+            printer.printErrors(errors);
             return;
         }
 
-        String id = IdUtil.nextStudentId(db.count());
-        StudentRecord rec = new StudentRecord(id, name, email, phone, program);
+        String id = IdUtil.nextStudentId(repo.count());
+        StudentRecord rec = new StudentRecord(id, data.name, data.email, data.phone, data.program);
+        repo.save(rec);
 
-        db.save(rec);
-
-        System.out.println("OK: created student " + id);
-        System.out.println("Saved. Total students: " + db.count());
-        System.out.println("CONFIRMATION:");
-        System.out.println(rec);
+        printer.printConfirmation(rec, repo.count());
     }
 }
